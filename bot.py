@@ -884,7 +884,7 @@ def _normalize_game_command_text(text):
 
 # One public base URL is shared by all generated media, not only gifts.
 # Keep the legacy names as fallbacks so existing deployments continue to work.
-DEFAULT_PUBLIC_MEDIA_URL = "https://ultrago.altare.global"
+DEFAULT_PUBLIC_MEDIA_URL = ""
 PUBLIC_MEDIA_URL = os.getenv("PUBLIC_MEDIA_URL", "").strip().rstrip("/")
 MEDIA_PUBLIC_URL = os.getenv("MEDIA_PUBLIC_URL", "").strip().rstrip("/")
 PUBLIC_BASE_URL = (os.getenv("PUBLIC_BASE_URL", "").strip() or os.getenv("RAVEN_PUBLIC_URL", "").strip()).rstrip("/")
@@ -899,11 +899,17 @@ def _public_media_base_url_from_env(env):
     for key in ("PUBLIC_MEDIA_URL", "MEDIA_PUBLIC_URL", "PUBLIC_BASE_URL", "RAVEN_PUBLIC_URL", "GIFT_PUBLIC_BASE_URL"):
         value = str(env.get(key, "") or "").strip().rstrip("/")
         if value:
+            if value.startswith("http://"):
+                value = "https://" + value[7:]
+            elif not value.startswith(("http://", "https://")):
+                value = "https://" + value
             return value
     for key in ("RAVEN_PUBLIC_DOMAIN", "RAILWAY_PUBLIC_DOMAIN", "RENDER_EXTERNAL_URL", "RENDER_EXTERNAL_HOSTNAME", "RAILWAY_STATIC_URL"):
         value = str(env.get(key, "") or "").strip().rstrip("/")
         if value:
-            if not value.startswith(("http://", "https://")):
+            if value.startswith("http://"):
+                value = "https://" + value[7:]
+            elif not value.startswith("https://"):
                 value = "https://" + value
             return value
     return DEFAULT_PUBLIC_MEDIA_URL

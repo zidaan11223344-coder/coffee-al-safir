@@ -36,10 +36,10 @@ their overlays, are stored in `${DATA_DIR}/generated_gifts/`; `DATA_DIR` resolve
 persistent-state backups, not for loading image assets. Platform variables override
 `.env`, and `.env` overrides the defaults in `.env.example`.
 
-If no public URL variable is supplied by the hosting platform, the bot automatically
-uses `https://ultrago.altare.global` for generated media links. The custom domain
-must still be configured in the hosting provider's domain/DNS settings and point to
-this service. Set `PUBLIC_MEDIA_URL` to another URL when deploying elsewhere.
+`PUBLIC_MEDIA_URL` must be a public HTTPS URL that the Talkin application can reach.
+The bot normalizes an accidental `http://` value to `https://`, but the hosting
+provider must actually terminate TLS and route the public domain to this service.
+Private addresses such as `172.31.x.x` are not valid public media URLs.
 
 Spotify track links and text searches can be resolved to a title/artist, then the bot
 uses Audius or its configured direct audio/download fallbacks for playback. Spotify's
