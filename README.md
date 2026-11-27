@@ -41,11 +41,12 @@ The bot normalizes an accidental `http://` value to `https://`, but the hosting
 provider must actually terminate TLS and route the public domain to this service.
 Private addresses such as `172.31.x.x` are not valid public media URLs.
 
-Room images use Talkin's official HTTPS upload flow by default
+Room images and normal room audio use Talkin's official HTTPS upload flow by default
 (`TALKIN_ROOM_MEDIA_UPLOAD=1`). The bot uploads the image to
 `https://talkinchat.com/upload` with `is_private=no`, receives a Talkin-hosted
-HTTPS URL, and sends that URL in the room message. This avoids requiring a custom
-HTTPS domain for the bot's own media server.
+HTTPS URL, and sends that URL in the room message. Audio is handled the same way
+for normal room messages. The separate live-stream/LiveKit path is not changed.
+This avoids requiring a custom HTTPS domain for the bot's own media server.
 
 Spotify track links and text searches can be resolved to a title/artist, then the bot
 uses Audius or its configured direct audio/download fallbacks for playback. Spotify's

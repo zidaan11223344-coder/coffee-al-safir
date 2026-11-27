@@ -18843,7 +18843,7 @@ class TalkinBot:
         carries the optional audio duration. Putting the room in ``password``
         made Talkin accept the packet but discard the image/audio payload.
         """
-        if media_type == "image" and _config_bool(os.getenv("TALKIN_ROOM_MEDIA_UPLOAD", "1"), default=True):
+        if media_type in {"image", "audio"} and _config_bool(os.getenv("TALKIN_ROOM_MEDIA_UPLOAD", "1"), default=True):
             try:
                 media_url = self._upload_room_media_official(media_url, room, media_type)
             except Exception as exc:
