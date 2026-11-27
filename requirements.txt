@@ -2,6 +2,7 @@ livekit==1.1.19
 requests>=2.31
 python-dotenv>=1.0
 yt-dlp[default]>=2026.11.23
+bgutil-ytdlp-pot-provider==2.0.2
 ffmpeg-python>=0.2.0
 Pillow>=10.0
 arabic-reshaper>=3.0.0
