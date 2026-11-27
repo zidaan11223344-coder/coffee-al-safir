@@ -30,6 +30,7 @@ import sys
 import inspect
 import gc
 import traceback
+import tempfile
 from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import urlparse, unquote, urlencode, quote
 from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
@@ -18755,6 +18756,78 @@ class TalkinBot:
         self.invite_thread.start()
 
 
+    def _upload_room_media_official(self, media_url, room, media_type):
+        """Upload room media to Talkin so rooms do not need our own HTTPS domain."""
+        room = str(room or "").strip()
+        media_type = str(media_type or "").strip().lower()
+        if not room or media_type not in {"image", "audio"}:
+            raise ValueError("بيانات رفع وسائط الغرفة غير صالحة")
+        source = str(media_url or "").strip()
+        if source.startswith("https://talkinchat.com/"):
+            return source
+        temp_path = None
+        path = Path(source).expanduser()
+        try:
+            if not path.is_file():
+                if not source.startswith(("http://", "https://")):
+                    raise FileNotFoundError(source)
+                suffix = Path(urlparse(source).path).suffix.lower()
+                if suffix not in {".jpg", ".jpeg", ".png", ".webp", ".gif", ".mp3", ".m4a", ".ogg", ".wav", ".webm"}:
+                    suffix = ".jpg" if media_type == "image" else ".mp3"
+                fd, temp_name = tempfile.mkstemp(prefix="talkin-room-", suffix=suffix)
+                os.close(fd)
+                temp_path = Path(temp_name)
+                with _http_session().get(source, headers={"User-Agent": "Talkinchat/5.8.3", "Accept": "image/*,audio/*,*/*;q=0.5"}, timeout=(10, 45), stream=True) as response:
+                    response.raise_for_status()
+                    total = 0
+                    with temp_path.open("wb") as output:
+                        for chunk in response.iter_content(1024 * 128):
+                            if not chunk:
+                                continue
+                            total += len(chunk)
+                            if total > 12 * 1024 * 1024:
+                                raise ValueError("وسائط الغرفة أكبر من الحد المسموح")
+                            output.write(chunk)
+                path = temp_path
+            fields = {
+                "jid": str(BOT_ID or "").strip(),
+                "to_user": room,
+                "is_private": "no",
+                "type": media_type,
+                "device_id": "null",
+                "s": os.getenv("TALKINCHAT_UPLOAD_SESSION", ""),
+            }
+            if not fields["jid"]:
+                raise RuntimeError("BOT_ID غير مضبوط")
+            mime_type = "audio/mpeg" if media_type == "audio" else (mimetypes.guess_type(path.name)[0] or "image/jpeg")
+            with path.open("rb") as media_file:
+                response = _http_session().post(
+                    "https://talkinchat.com/upload", data=fields,
+                    files={"file": (path.name, media_file, mime_type)},
+                    headers={"User-Agent": "Talkinchat/5.8.3", "Accept": "text/plain"},
+                    timeout=(10, 90),
+                )
+            response.raise_for_status()
+            raw = str(response.text or "").strip().strip('"')
+            uploaded_url = raw
+            if raw.startswith("{"):
+                payload = response.json()
+                uploaded_url = str(payload.get("url") or payload.get("media_url") or payload.get("file_url") or payload.get("result") or "").strip()
+            if uploaded_url.startswith("/"):
+                uploaded_url = "https://talkinchat.com" + uploaded_url
+            if uploaded_url.startswith("http://"):
+                uploaded_url = "https://" + uploaded_url[7:]
+            if not uploaded_url.startswith("https://"):
+                raise RuntimeError("استجابة رفع وسائط الغرفة ليست رابط HTTPS")
+            self.log("[MEDIA] official room upload completed:", media_type, room, uploaded_url[:180])
+            return uploaded_url
+        finally:
+            if temp_path is not None:
+                try:
+                    temp_path.unlink(missing_ok=True)
+                except Exception:
+                    pass
+
     def send_room_media(self, room: str, media_url: str, media_type: str, duration: int = 0):
         """Send room media using Query's normal room/url fields.
 
@@ -18763,6 +18836,12 @@ class TalkinBot:
         carries the optional audio duration. Putting the room in ``password``
         made Talkin accept the packet but discard the image/audio payload.
         """
+        if media_type == "image" and _config_bool(os.getenv("TALKIN_ROOM_MEDIA_UPLOAD", "1"), default=True):
+            try:
+                media_url = self._upload_room_media_official(media_url, room, media_type)
+            except Exception as exc:
+                self.log("[MEDIA] official room upload failed:", repr(exc))
+                return False
         if media_type == "audio":
             packet = encode_query(
                 "room_message", type_="audio",
