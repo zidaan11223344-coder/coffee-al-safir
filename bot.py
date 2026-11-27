@@ -18767,6 +18767,13 @@ class TalkinBot:
             return source
         temp_path = None
         path = Path(source).expanduser()
+        if not path.is_file():
+            try:
+                local_target = self._local_media_target_from_url(source)
+            except Exception:
+                local_target = None
+            if local_target is not None:
+                path = Path(local_target)
         try:
             if not path.is_file():
                 if not source.startswith(("http://", "https://")):
@@ -21293,22 +21300,17 @@ class TalkinBot:
                     self.reply_text(room,f"❌ رصيدك غير كافٍ. الهدية تحتاج {_fmt_points(cost)} نقطة، ورصيدك {_fmt_points(balance)}.",private_to); return True
                 _add_points(sender_name,-cost); charged=True
             # Render and send the real gift card image, then send the gift text.
-            # The image is hosted by the bot media server under /gifts/.
+            # With room upload enabled, the local file is sent to Talkin directly.
             public_base = _public_base_url()
-            if not public_base:
-                if charged:
-                    _add_points(sender_name, cost)
-                raise RuntimeError("لا يوجد رابط عام لصور الهدايا؛ اضبط PUBLIC_MEDIA_URL أو PUBLIC_BASE_URL أو رابط النطاق العام للاستضافة")
             sender_key = sender_name.casefold().lstrip("@")
             receiver_key = target.casefold().lstrip("@")
             # Use each account's own cached/profile image beside its own name.
             sender_photo_url = self.user_photos.get(sender_key, "") or self._lookup_profile_photo(sender_name)
             receiver_photo_url = self.user_photos.get(receiver_key, "") or self._lookup_profile_photo(target)
             gift_path = render_gift_card(gift_id, sender_name, target, sender_photo_url, receiver_photo_url)
-            gift_url = public_base + "/gifts/" + gift_path.name
-            self._verify_public_media_url(gift_url, "image")
             if not gift_path.is_file() or gift_path.stat().st_size < 64:
                 raise RuntimeError(f"ملف صورة الهدية غير صالح: {gift_path}")
+            gift_url = (public_base + "/gifts/" + gift_path.name) if public_base else str(gift_path)
             # Put the gift notice above the configured base status in one
             # bounded profile-status value, then restore the base status later.
             self._set_temporary_gift_status(
@@ -21317,7 +21319,7 @@ class TalkinBot:
                 GIFT_CATALOG.get(str(gift_id), ("🎁", "هدية"))[1],
             )
             if private_to:
-                self.send_private_media(private_to, gift_url, "image")
+                self.send_private_media(private_to, gift_url, "image", local_path=gift_path)
                 self.send_private_text(private_to, f"🎁 {item[0]} {item[1]}\n📤 {sender_name} ➜ 📥 {target}\n💰 {cost} نقطة")
             else:
                 gift_text = f"🎁 {item[0]} {item[1]}\n📤 {sender_name} ➜ 📥 {target}\n💰 {cost} نقطة"
@@ -21459,10 +21461,6 @@ class TalkinBot:
             and (not respect_room_filter or not _game_results_disabled_for_room(room))
         ]
         if not target_rooms:
-            return False
-        base = _public_base_url()
-        if not base:
-            self.log("[GAME] winner card skipped: public media URL is not configured")
             return False
         filename = GAME_IMAGE_FILES.get(game_key)
         image = ASSETS_DIR / filename if filename else None
@@ -26095,7 +26093,8 @@ class TalkinBot:
 
     def _game_public_image(self, path, route="games"):
         base=_public_base_url()
-        if not base: return ""
+        if not base:
+            return str(path) if path and Path(path).is_file() else ""
         path.parent.mkdir(parents=True,exist_ok=True)
         try: self._verify_public_media_url(f"{base}/{route}/{path.name}","image")
         except Exception: pass
