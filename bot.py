@@ -18816,15 +18816,43 @@ class TalkinBot:
                 )
             response.raise_for_status()
             raw = str(response.text or "").strip().strip('"')
-            uploaded_url = raw
-            if raw.startswith("{"):
+            def find_upload_url(value):
+                if isinstance(value, str):
+                    text = value.strip().strip('"').strip()
+                    match = re.search(r'(?i)(https?://[^\s"<>]+|//[^\s"<>]+)', text)
+                    if match:
+                        return match.group(1).rstrip("'.,")
+                    if text.startswith("/"):
+                        return "https://talkinchat.com" + text
+                    if re.match(r"^[A-Za-z0-9.-]+\.[A-Za-z]{2,}/", text):
+                        return "https://" + text
+                    return ""
+                if isinstance(value, dict):
+                    for key in ("url", "media_url", "file_url", "photo_url", "download_url", "link", "path", "file", "result", "data"):
+                        found = find_upload_url(value.get(key))
+                        if found:
+                            return found
+                    for child in value.values():
+                        found = find_upload_url(child)
+                        if found:
+                            return found
+                elif isinstance(value, (list, tuple)):
+                    for child in value:
+                        found = find_upload_url(child)
+                        if found:
+                            return found
+                return ""
+            try:
                 payload = response.json()
-                uploaded_url = str(payload.get("url") or payload.get("media_url") or payload.get("file_url") or payload.get("result") or "").strip()
+            except Exception:
+                payload = None
+            uploaded_url = find_upload_url(payload) or find_upload_url(raw)
             if uploaded_url.startswith("/"):
                 uploaded_url = "https://talkinchat.com" + uploaded_url
             if uploaded_url.startswith("http://"):
                 uploaded_url = "https://" + uploaded_url[7:]
             if not uploaded_url.startswith("https://"):
+                self.log("[MEDIA] Talkin upload response was not a URL:", response.status_code, repr(raw[:500]))
                 raise RuntimeError("استجابة رفع وسائط الغرفة ليست رابط HTTPS")
             self.log("[MEDIA] official room upload completed:", media_type, room, uploaded_url[:180])
             return uploaded_url
@@ -21462,6 +21490,7 @@ class TalkinBot:
         ]
         if not target_rooms:
             return False
+        base = _public_base_url()
         filename = GAME_IMAGE_FILES.get(game_key)
         image = ASSETS_DIR / filename if filename else None
         if not image or not image.is_file():
@@ -21487,7 +21516,7 @@ class TalkinBot:
                     winner_photo = self._lookup_profile_photo(winner_name)
                 language = self._effective_room_language(target_rooms[0]) if game_key == "hunt_dragon" and target_rooms else "ar"
                 card = render_game_winner_card(game_key, winner_name, winner_photo, language=language)
-                url = f"{base}/games/{card.name}"
+                url = f"{base}/games/{card.name}" if base else str(card)
             self._verify_public_media_url(url, "image")
             rooms = []
             seen = set()
