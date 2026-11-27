@@ -884,6 +884,7 @@ def _normalize_game_command_text(text):
 
 # One public base URL is shared by all generated media, not only gifts.
 # Keep the legacy names as fallbacks so existing deployments continue to work.
+DEFAULT_PUBLIC_MEDIA_URL = "https://ultrago.altare.global"
 PUBLIC_MEDIA_URL = os.getenv("PUBLIC_MEDIA_URL", "").strip().rstrip("/")
 MEDIA_PUBLIC_URL = os.getenv("MEDIA_PUBLIC_URL", "").strip().rstrip("/")
 PUBLIC_BASE_URL = (os.getenv("PUBLIC_BASE_URL", "").strip() or os.getenv("RAVEN_PUBLIC_URL", "").strip()).rstrip("/")
@@ -905,7 +906,7 @@ def _public_media_base_url_from_env(env):
             if not value.startswith(("http://", "https://")):
                 value = "https://" + value
             return value
-    return ""
+    return DEFAULT_PUBLIC_MEDIA_URL
 
 def _public_base_url():
     return _public_media_base_url_from_env(os.environ)

@@ -36,6 +36,11 @@ their overlays, are stored in `${DATA_DIR}/generated_gifts/`; `DATA_DIR` resolve
 persistent-state backups, not for loading image assets. Platform variables override
 `.env`, and `.env` overrides the defaults in `.env.example`.
 
+If no public URL variable is supplied by the hosting platform, the bot automatically
+uses `https://ultrago.altare.global` for generated media links. The custom domain
+must still be configured in the hosting provider's domain/DNS settings and point to
+this service. Set `PUBLIC_MEDIA_URL` to another URL when deploying elsewhere.
+
 Spotify track links and text searches can be resolved to a title/artist, then the bot
 uses Audius or its configured direct audio/download fallbacks for playback. Spotify's
 catalog/API does not provide a general full-track audio URL, so Spotify itself is not

@@ -78,6 +78,7 @@ class _Handler(SimpleHTTPRequestHandler):
 def public_base_url():
     # One public base URL serves every media type; retain old variable names
     # as fallbacks for deployments that have not migrated their .env yet.
+    default_domain = 'https://ultrago.altare.global'
     for key in ('PUBLIC_MEDIA_URL', 'MEDIA_PUBLIC_URL', 'PUBLIC_BASE_URL',
                 'RAVEN_PUBLIC_URL', 'GIFT_PUBLIC_BASE_URL'):
         manual = os.getenv(key, '').strip().rstrip('/')
@@ -89,7 +90,7 @@ def public_base_url():
             if domain.startswith(('http://', 'https://')):
                 return domain
             return 'https://' + domain
-    return ''
+    return default_domain
 
 def start_media_server(port=None):
     port = int(port or os.getenv('PORT') or os.getenv('ASSET_HTTP_PORT') or '8080')
