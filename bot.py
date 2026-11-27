@@ -19126,7 +19126,12 @@ class TalkinBot:
                     for fmt in (candidate_info.get("formats") or []):
                         if not isinstance(fmt, dict):
                             continue
-                        format_url = str(fmt.get("url") or "").strip()
+                        format_url = str(
+                            fmt.get("url")
+                            or fmt.get("manifest_url")
+                            or fmt.get("fragment_base_url")
+                            or ""
+                        ).strip()
                         acodec = str(fmt.get("acodec") or "").strip().casefold()
                         if not format_url.startswith("http") or not acodec or acodec == "none":
                             continue
@@ -19149,12 +19154,21 @@ class TalkinBot:
                                 2 if protocol.startswith("http") else 0,
                                 -abs(160 - abr) if abr else -50,
                             )
-                        chosen_url = str(max(usable_formats, key=format_score).get("url") or "").strip()
+                        chosen_format = max(usable_formats, key=format_score)
+                        chosen_url = str(
+                            chosen_format.get("url")
+                            or chosen_format.get("manifest_url")
+                            or chosen_format.get("fragment_base_url")
+                            or ""
+                        ).strip()
                     else:
-                        # Some clients expose only a top-level combined A/V URL.
+                        # Some clients expose only a top-level URL and omit the
+                        # codec metadata. Do not discard that result: Talkin's
+                        # native audio upload path can validate and normalize it,
+                        # and this is preferable to falsely reporting that
+                        # YouTube returned no media at all.
                         top_url = str(candidate_info.get("url") or "").strip()
-                        top_acodec = str(candidate_info.get("acodec") or "").strip().casefold()
-                        if top_url.startswith("http") and top_acodec not in ("", "none"):
+                        if top_url.startswith(("http://", "https://")):
                             chosen_url = top_url
 
                     if chosen_url:
@@ -20192,35 +20206,57 @@ class TalkinBot:
                 started = time.monotonic()
                 result = self._music_live_source(query)
                 elapsed = time.monotonic() - started
-                if not isinstance(result, dict):
-                    raise RuntimeError("لم يعثر مسار YouTube المباشر على رابط صوت صالح")
-                audio_url = str(result.get("url") or "").strip()
+                delivery_mode = "direct"
+                local_path = ""
+                if isinstance(result, dict):
+                    audio_url = str(result.get("url") or "").strip()
+                else:
+                    audio_url = ""
+
+                # A direct URL is fastest, but it can be unavailable when
+                # YouTube enforces GVS/PO-token checks. In that case download
+                # the same YouTube result locally and let send_room_media()
+                # upload it to Talkin over HTTPS. This does not affect LiveKit.
                 if not audio_url.startswith(("http://", "https://")):
-                    raise RuntimeError("YouTube لم يُرجع رابطًا صالحًا للصوت")
-                source = str(result.get("source") or "YouTube").casefold()
+                    downloaded = self._music_download(query)
+                    if not downloaded or not isinstance(downloaded, tuple) or len(downloaded) < 2:
+                        raise RuntimeError(
+                            "تعذر استخراج رابط YouTube وتنزيل MP3 محلي؛ تحقق من PO Token أو حظر IP"
+                        )
+                    result, downloaded_path = downloaded
+                    local_path = str(downloaded_path or "").strip()
+                    if not isinstance(result, dict) or not Path(local_path).is_file():
+                        raise RuntimeError("لم ينشئ yt-dlp ملف MP3 صالحًا من YouTube")
+                    audio_url = local_path
+                    delivery_mode = "uploaded_mp3"
+
+                source = str((result or {}).get("source") or "YouTube").casefold()
                 if "youtube" not in source and "youtu" not in audio_url.casefold():
                     raise RuntimeError("المصدر الذي أعاده محلل يوتيوب ليس YouTube")
-                title = str(result.get("title") or query).strip()
-                duration = int(result.get("duration") or 0)
+                title = str((result or {}).get("title") or query).strip()
+                duration = int((result or {}).get("duration") or 0)
                 sent = self.send_room_media(room, audio_url, "audio", duration)
                 if sent is False:
-                    raise RuntimeError("Talkin لم يقبل رسالة الصوت القادمة من رابط YouTube")
+                    raise RuntimeError("Talkin لم يقبل رسالة الصوت القادمة من YouTube")
                 info = {
                     "requester": requester, "title": title,
-                    "artist": str(result.get("uploader") or result.get("channel") or "YouTube"),
+                    "artist": str((result or {}).get("uploader") or (result or {}).get("channel") or "YouTube"),
                     "url": audio_url, "local_path": "", "query": query,
-                    "duration": duration, "source_url": str(result.get("source_url") or ""),
-                    "source": "YouTube", "direct_stream": True, "created_at": time.time(),
+                    "duration": duration, "source_url": str((result or {}).get("source_url") or ""),
+                    "source": "YouTube", "direct_stream": delivery_mode == "direct", "created_at": time.time(),
                 }
+                if local_path:
+                    info["local_path"] = local_path
                 self.music_current[_norm_user(requester)] = info
                 _persist_music_current_entry(requester, info)
                 self.log("[MUSIC][YOUTUBE-TEST][SUCCESS]", "title=", title[:150],
-                         "duration=", duration, "resolver_seconds=", round(elapsed, 3), "room=", room)
+                         "duration=", duration, "mode=", delivery_mode,
+                         "resolver_seconds=", round(elapsed, 3), "room=", room)
                 self.send_room_text(
                     room,
-                    f"✅ أُرسل الصوت من YouTube فقط عبر رسالة Talkin الصوتية.\n"
+                    f"✅ أُرسل الصوت من YouTube عبر رسالة Talkin الصوتية ({'رابط مباشر' if delivery_mode == 'direct' else 'رفع MP3 عبر HTTPS'}).\n"
                     f"🎵 {title}\n⏱️ المدة: {duration // 60}:{duration % 60:02d}\n"
-                    "إذا توقف قبل نهاية المدة، فالمشكلة في رابط/تدفق YouTube نفسه؛ لم أستخدم مصدرًا بديلًا."
+                    "لم أستخدم مصدرًا موسيقيًا بديلًا."
                 )
             except Exception as exc:
                 self._log_music_exception("youtube_only_test_failed", exc, room=room,
