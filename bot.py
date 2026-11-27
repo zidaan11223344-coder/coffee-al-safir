@@ -19053,7 +19053,6 @@ class TalkinBot:
                     # Explicitly prefer an audio-only format, but allow a combined
                     # audio/video format when a particular YouTube client exposes
                     # no standalone audio stream.
-                    "format": "bestaudio/best",
                     "socket_timeout": 8,
                     "retries": 2,
                     "extractor_retries": 2,
@@ -20668,11 +20667,11 @@ class TalkinBot:
                             if not fallback_path.is_file() or fallback_path.stat().st_size <= 4096:
                                 raise RuntimeError("ملف MP3 الاحتياطي غير موجود أو غير مكتمل")
                             set_source(fallback_info, fallback_path)
-                            fallback_url = url
-                            self._verify_public_media_url(fallback_url, media_kind="audio")
                             for target_room in direct_failed_rooms:
                                 try:
-                                    sent = self.send_room_media(target_room, fallback_url, "audio", duration)
+                                    # Upload the local MP3 directly to Talkin.
+                                    # A public media domain is not required.
+                                    sent = self.send_room_media(target_room, str(fallback_path), "audio", duration)
                                     if sent is False:
                                         raise RuntimeError("Talkin لم يقبل ملف MP3 الاحتياطي")
                                     published_rooms.append(target_room)
@@ -21365,7 +21364,6 @@ class TalkinBot:
                 _add_points(sender_name,-cost); charged=True
             # Render and send the real gift card image, then send the gift text.
             # With room upload enabled, the local file is sent to Talkin directly.
-            public_base = _public_base_url()
             sender_key = sender_name.casefold().lstrip("@")
             receiver_key = target.casefold().lstrip("@")
             # Use each account's own cached/profile image beside its own name.
@@ -21374,7 +21372,9 @@ class TalkinBot:
             gift_path = render_gift_card(gift_id, sender_name, target, sender_photo_url, receiver_photo_url)
             if not gift_path.is_file() or gift_path.stat().st_size < 64:
                 raise RuntimeError(f"ملف صورة الهدية غير صالح: {gift_path}")
-            gift_url = (public_base + "/gifts/" + gift_path.name) if public_base else str(gift_path)
+            # Keep the local path. send_room_media() uploads it to Talkin's
+            # official HTTPS endpoint, so game cards do not need a public URL.
+            gift_url = str(gift_path)
             # Put the gift notice above the configured base status in one
             # bounded profile-status value, then restore the base status later.
             self._set_temporary_gift_status(
